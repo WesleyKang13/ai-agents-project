@@ -1,58 +1,98 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# AI Agents Project
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A personal dashboard for managing Codex agents. The first milestone provides a Laravel application with an Inertia, React and TypeScript frontend, a minimal Workshop at `/workshop`, and local PostgreSQL. Agent connections and controls come next; see [the implementation checklist](docs/implementation-checklist.md).
 
-## About Laravel
+## Start this configured WSL checkout
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+From the repository root in WSL:
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
-
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
-
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
-
-```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+```sh
+bash scripts/postgres.sh start
+composer run dev
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Open [the workshop](http://localhost:8000/workshop) or [home](http://localhost:8000). Keep the command running for Laravel and Vite hot reload. Ctrl+C stops both web processes. PostgreSQL runs separately; stop it with `bash scripts/postgres.sh stop` and inspect it with `bash scripts/postgres.sh status`.
 
-## Contributing
+The current `.env` uses `ai_agents_dev` / `ai_agents_app` on `127.0.0.1:5433`. Its generated password stays private. The original environment, including the existing MySQL credentials, was preserved in ignored `.env.backup`. Unrelated environment settings and the application key were retained. Neither local file belongs in Git.
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## Set up another WSL checkout
 
-## Code of Conduct
+Keep the project in the Linux filesystem, for example `~/projects/ai-agents-project`. Run PHP, Composer, Node and npm inside WSL.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+Requirements: PHP 8.3+ with `pdo_pgsql`, Composer 2, Node 20.19+ or 22.12+, npm, and PostgreSQL server/client binaries (`pg_config`, `initdb`, `pg_ctl`, `psql`). Check them before installing dependencies:
 
-## Security Vulnerabilities
+```sh
+php -v
+composer -V
+node -v
+npm -v
+php --ri pdo_pgsql
+psql --version
+pg_config --bindir
+composer install
+npm ci
+test -f .env || cp .env.example .env
+```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+On Ubuntu, missing PostgreSQL components can be installed with `sudo apt install postgresql postgresql-client libpq-dev php8.3-pgsql` when using the PHP 8.3 package repository. Match the PHP extension package to your installed PHP version. Package installation requires system permissions.
 
-## License
+If `APP_KEY` is empty in the new `.env`, run `php artisan key:generate`. Retain an existing key. Configure PostgreSQL using one of these approaches.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+### Project-local PostgreSQL (no sudo)
+
+The helper initializes a private cluster under ignored `.local/postgres`, listens on loopback port 5433, and uses peer authentication for its owner and password authentication for TCP clients. It reuses the cluster on subsequent starts.
+
+```sh
+bash scripts/postgres.sh start
+createuser --host="$PWD/.local/postgres" --port=5433 --pwprompt --no-superuser --no-createdb --no-createrole ai_agents_app
+createdb --host="$PWD/.local/postgres" --port=5433 --owner=ai_agents_app ai_agents_dev
+```
+
+Create the role/database only once. Enter a new development password at the prompt and put the same password in `.env`. The other `DB_*` defaults in `.env.example` match this cluster. `PG_DEV_PORT=5434 bash scripts/postgres.sh start` can select another port if needed; update `DB_PORT` to match. Stop the cluster before changing its port. Do not remove `.local/postgres` to resolve a startup issue; check `.local/postgres/server.log` first.
+
+### Existing system PostgreSQL
+
+Alternatively, start your existing service with `sudo service postgresql start`. With database administrator access, create a dedicated login role and an owned development database:
+
+```sh
+sudo -u postgres createuser --pwprompt --no-superuser --no-createdb --no-createrole ai_agents_app
+sudo -u postgres createdb --owner=ai_agents_app ai_agents_dev
+```
+
+Use the server's actual host/port (normally `127.0.0.1:5432`) and the chosen password in `.env`. Preserve any existing credentials before changing values. A configured `DB_URL` overrides individual connection settings.
+
+### Finish setup
+
+After checking that `.env` targets the intended development database:
+
+```sh
+php artisan config:clear
+php artisan migrate
+php artisan migrate:status
+npm run build
+composer run dev
+```
+
+`migrate` applies pending migrations without resetting existing data. PHP feature tests use the existing isolated SQLite in-memory configuration, not the development database. The foundation dev command starts Laravel and Vite; a queue worker is not needed yet. After dependency changes, rerun `npm ci` and the build.
+
+Laravel Boost is installed for development. Follow `AGENTS.md`; `php artisan boost:install --no-interaction` refreshes its generated guidelines, skills and MCP configuration. MCP clients need to reload configuration to discover a newly installed server.
+
+## Verification
+
+```sh
+composer test
+npm run types:check
+npm run build
+npm run format:check
+vendor/bin/pint --dirty --format agent
+composer validate --no-check-publish
+bash -n scripts/postgres.sh
+```
+
+Use `php artisan test --filter=WorkshopTest` for a focused run. Use `npm run format` to format the frontend. HTTP tests disable Vite assets so they can run before a frontend build. The production build and live HTTP checks verify assets separately.
+
+Verified on WSL2 with PHP 8.3.30, Composer 2.2.6, Node 20.19.5, npm 10.8.2 and PostgreSQL 14.24. Locked packages include Laravel 13.43, Inertia Laravel 3.7 / React adapter 3.11, React 19.3, TypeScript 7.0, Vite 8.3 and Tailwind 4.3. `concurrently` 9 supports this Node runtime; the skeleton's 10.x series required Node 22. Composer 2.2 emits dependency deprecation notices under PHP 8.3, but installation, tests and validation pass.
+
+Manual Inertia integration follows the current official [server setup](https://inertiajs.com/docs/v3/installation/server-side-setup), [React/Vite setup](https://inertiajs.com/docs/v3/installation/client-side-setup) and [Laravel Vite guide](https://laravel.com/docs/13.x/vite), checked against installed package metadata and Boost's version-specific documentation. System fonts keep the build independent of external font downloads.
+
+The checklist records verification results and limitations. This milestone is intended for local development; agent execution, authentication and release readiness remain future work.
