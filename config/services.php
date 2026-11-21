@@ -2,6 +2,10 @@
 
 return [
 
+    'codex' => [
+        'binary' => env('CODEX_BINARY', 'codex'),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Third Party Services
