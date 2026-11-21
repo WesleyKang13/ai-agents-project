@@ -103,6 +103,23 @@ class OwnedProcess
         return $this->process?->getExitCode();
     }
 
+    /** @return array{pid: int, start: string}|null */
+    public function ownership(): ?array
+    {
+        return $this->group === null ? null : ['pid' => $this->group, 'start' => $this->descendants[$this->group]];
+    }
+
+    public static function cleanRecorded(int $pid, string $start): void
+    {
+        $owner = new self;
+
+        if ($start !== '' && $owner->identity($pid) === $start && posix_getpgid($pid) === $pid) {
+            $owner->group = $pid;
+            $owner->descendants[$pid] = $start;
+            $owner->close();
+        }
+    }
+
     public function close(): void
     {
         $this->rememberDescendants();

@@ -20,6 +20,7 @@ function send(array $message): void
 }
 
 $decision = null;
+$firstAsyncId = null;
 
 while (($line = fgets(STDIN)) !== false) {
     $message = json_decode($line, true, 128, JSON_THROW_ON_ERROR);
@@ -34,7 +35,13 @@ while (($line = fgets(STDIN)) !== false) {
         continue;
     }
 
-    if ($message['method'] === 'probe') {
+    if ($message['method'] === 'async-first') {
+        $firstAsyncId = $message['id'];
+    } elseif ($message['method'] === 'async-second') {
+        send(['method' => 'item/agentMessage/delta', 'params' => ['delta' => 'interleaved']]);
+        send(['id' => $message['id'], 'result' => ['order' => 'second']]);
+        send(['id' => $firstAsyncId, 'result' => ['order' => 'first']]);
+    } elseif ($message['method'] === 'probe') {
         fwrite(STDERR, 'secret-test-token');
         send(['id' => 1, 'method' => 'item/commandExecution/requestApproval', 'params' => ['threadId' => 'thread-1', 'turnId' => 'turn-1', 'itemId' => 'item-1', 'command' => 'echo test']]);
         send(['method' => 'item/agentMessage/delta', 'params' => ['delta' => 'hello']]);

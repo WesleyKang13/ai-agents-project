@@ -35,8 +35,8 @@ export default function Home({ projectName, navigation }: SharedProps) {
                         Room for your whole team.
                     </h2>
                     <p className="mt-5 leading-7 text-muted">
-                        The foundation is here. Agent connections, task controls and a workshop full
-                        of little robots will arrive in the milestones ahead.
+                        Your first agent is ready to join you. Send a task, follow its progress and
+                        keep the conversation going in your private workshop.
                     </p>
                 </aside>
             </section>

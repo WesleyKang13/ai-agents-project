@@ -154,6 +154,44 @@ class AppServerClient
         $this->process->close();
     }
 
+    public function renew(): void
+    {
+        $this->close();
+        $this->process = new OwnedProcess;
+        $this->decoder = new JsonLineDecoder;
+        $this->responses = $this->serverRequests = $this->completions = [];
+        $this->nextId = 0;
+        $this->exited = false;
+    }
+
+    /** @param array<string, mixed> $params */
+    public function beginRequest(string $method, array $params): int
+    {
+        $id = ++$this->nextId;
+        $this->responses[$id] = null;
+        $this->send(['id' => $id, 'method' => $method, 'params' => (object) $params]);
+
+        return $id;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function takeResponse(int $id): ?array
+    {
+        $response = $this->responses[$id] ?? null;
+
+        if ($response !== null) {
+            unset($this->responses[$id]);
+        }
+
+        return $response;
+    }
+
+    /** @return array{pid: int, start: string}|null */
+    public function ownership(): ?array
+    {
+        return $this->process->ownership();
+    }
+
     /** @param array<string, mixed> $message */
     private function dispatch(array $message): void
     {

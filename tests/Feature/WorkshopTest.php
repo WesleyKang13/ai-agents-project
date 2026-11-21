@@ -2,11 +2,21 @@
 
 namespace Tests\Feature;
 
+use App\Models\User;
+use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\TestCase;
 
 class WorkshopTest extends TestCase
 {
+    use LazilyRefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->actingAs(User::factory()->create());
+    }
+
     public function test_home_provides_navigation_to_the_workshop(): void
     {
         $this->get('/')
@@ -27,8 +37,8 @@ class WorkshopTest extends TestCase
                     ->component('Workshop')
                     ->where('projectName', 'AI Agents Project')
                     ->where('navigation.home', '/')
-                    ->where('agents', [])
-                    ->where('milestone', 'Application foundation')
+                    ->where('workshop', null)
+                    ->where('milestone', 'One agent controlled from the browser')
                 );
         }
     }
@@ -44,8 +54,8 @@ class WorkshopTest extends TestCase
             ->assertOk()
             ->assertHeader('X-Inertia', 'true')
             ->assertJsonPath('component', 'Workshop')
-            ->assertJsonPath('props.agents', [])
-            ->assertJsonPath('props.milestone', 'Application foundation')
+            ->assertJsonPath('props.workshop', null)
+            ->assertJsonPath('props.milestone', 'One agent controlled from the browser')
             ->assertJsonPath('url', '/workshop');
     }
 }

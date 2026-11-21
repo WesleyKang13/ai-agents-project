@@ -1,4 +1,4 @@
-import { Link, usePage } from '@inertiajs/react';
+import { Link, router, usePage } from '@inertiajs/react';
 import type { ReactNode } from 'react';
 import type { SharedProps } from '../types';
 
@@ -40,6 +40,14 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                                 {label}
                             </Link>
                         ))}
+                        {props.auth.user && (
+                            <button
+                                onClick={() => router.post(props.logoutUrl)}
+                                className="rounded-full px-4 py-2 text-muted hover:bg-sage"
+                            >
+                                Sign out
+                            </button>
+                        )}
                     </nav>
                 </div>
             </header>
@@ -51,7 +59,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             </main>
             <footer className="mx-auto flex w-full max-w-6xl flex-wrap justify-between gap-3 px-6 py-6 text-xs text-muted sm:px-10">
                 <span>A little space for big ideas.</span>
-                <span>AI Agents Project · Application foundation</span>
+                <span>AI Agents Project · Your private workshop</span>
             </footer>
         </div>
     );

@@ -38,6 +38,8 @@ class HandleInertiaRequests extends Middleware
         return [
             ...parent::share($request),
             'projectName' => 'AI Agents Project',
+            'auth' => ['user' => $request->user() === null ? null : ['name' => $request->user()->name]],
+            'logoutUrl' => route('logout', absolute: false),
             'navigation' => [
                 'home' => route('home', absolute: false),
                 'workshop' => route('workshop', absolute: false),

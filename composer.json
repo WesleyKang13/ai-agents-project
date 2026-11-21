@@ -44,7 +44,7 @@
         ],
         "dev": [
             "Composer\\Config::disableProcessTimeout",
-            "npx concurrently --kill-others --names=server,vite \"php artisan serve --host=127.0.0.1\" \"npm run dev\""
+            "npx concurrently --kill-others --names=server,vite \"PHP_CLI_SERVER_WORKERS=4 php artisan serve --host=127.0.0.1 --no-reload\" \"npm run dev\""
         ],
         "test": [
             "@php artisan config:clear --ansi",

@@ -170,4 +170,48 @@ class AppServerClientTest extends TestCase
     {
         return dirname(__DIR__, 3).'/Fixtures/codex-peer.php';
     }
+
+    public function test_a_new_connection_discards_old_permissions_and_terminal_events(): void
+    {
+        $client = new AppServerClient(new OwnedProcess, new JsonLineDecoder);
+
+        try {
+            $client->start([PHP_BINARY, $this->fixture(), 'protocol'], sys_get_temp_dir(), function (): void {});
+            $client->request('probe', [], 2);
+            $client->renew();
+            $this->assertSame([], $client->pendingRequests());
+            $this->assertNull($client->completion('thread-1', 'turn-1'));
+            $client->start([PHP_BINARY, $this->fixture(), 'protocol'], sys_get_temp_dir(), function (): void {});
+            $this->assertNull($client->request('verify', [], 2)['decision']);
+        } finally {
+            $client->close();
+        }
+    }
+
+    public function test_correlates_two_outstanding_controls_when_responses_arrive_in_reverse_order(): void
+    {
+        $this->withPeer('protocol', function (AppServerClient $client): void {
+            $first = $client->beginRequest('async-first', []);
+            $second = $client->beginRequest('async-second', []);
+            $answers = [];
+            $deadline = microtime(true) + 2;
+
+            while (count($answers) < 2 && microtime(true) < $deadline) {
+                $client->poll();
+
+                foreach ([$first, $second] as $id) {
+                    $response = $client->takeResponse($id);
+
+                    if ($response !== null) {
+                        $answers[$id] = $response['result'];
+                    }
+                }
+
+                usleep(1000);
+            }
+
+            $this->assertSame(['order' => 'first'], $answers[$first]);
+            $this->assertSame(['order' => 'second'], $answers[$second]);
+        });
+    }
 }
