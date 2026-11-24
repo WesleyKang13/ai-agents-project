@@ -8,23 +8,20 @@ use App\Models\AgentControl;
 use App\Models\AgentEvent;
 use App\Models\AgentMessage;
 use App\Models\AgentTurn;
+use App\Models\Project;
 use App\Models\User;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 
 class AgentStore
 {
     public function __construct(private AgentWorkspace $workspaces, private AgentPresenter $presenter, private AgentOutput $output) {}
 
-    public function create(User $user, string $name, string $workspace): Agent
+    public function create(User $user, Project $project, string $name, ?string $role = null, ?string $instructions = null): Agent
     {
-        $path = $this->workspaces->resolve($workspace);
+        abort_unless($project->user_id === $user->id, 404);
+        $path = $this->workspaces->project($project);
 
-        try {
-            return Agent::query()->create(['slot' => 1, 'user_id' => $user->id, 'name' => $name, 'workspace_key' => $workspace, 'workspace_path' => $path, 'status' => 'offline']);
-        } catch (UniqueConstraintViolationException) {
-            abort(409, 'This workshop already has its one agent.');
-        }
+        return Agent::query()->create(['project_id' => $project->id, 'user_id' => $user->id, 'name' => $name, 'role' => $role, 'instructions' => $instructions, 'workspace_key' => 'project', 'workspace_path' => $path, 'status' => 'offline']);
     }
 
     /** @param array<string, mixed> $payload */
@@ -46,7 +43,7 @@ class AgentStore
             $turn = null;
 
             if ($kind === 'task') {
-                $this->workspaces->resolve($agent->workspace_key, $agent->workspace_path);
+                $this->workspaces->agent($agent);
                 abort_unless($agent->status === 'idle' && $agent->active_turn_id === null, 409, 'The agent is busy. Send a steering message or stop the current task.');
                 $turn = AgentTurn::query()->create(['agent_id' => $agent->id, 'status' => 'queued']);
                 $agent->active_turn_id = $turn->id;
@@ -59,7 +56,7 @@ class AgentStore
             } else {
                 abort_unless($agent->active_turn_id !== null && $agent->active_turn_id === ($payload['turn_id'] ?? null), 409, 'This task has ended or changed. Refresh the conversation.');
                 abort_unless(in_array($agent->status, ['queued', 'running', 'waiting_permission'], true), 409, 'This action is no longer available for the current task.');
-                $turn = AgentTurn::query()->findOrFail($agent->active_turn_id);
+                $turn = AgentTurn::query()->where('agent_id', $agent->id)->findOrFail($agent->active_turn_id);
 
                 if ($kind === 'steer') {
                     abort_unless($turn->codex_id !== null && $agent->status === 'running', 409, 'Wait until the task is running before sending a steering message.');

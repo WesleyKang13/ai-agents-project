@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'allowed_project_roots' => explode(PATH_SEPARATOR, env('PROJECT_ALLOWED_ROOTS', '/home/wesley/projects')),
     'workspaces' => [
         'sandbox' => [
             'name' => 'Disposable sandbox',

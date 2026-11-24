@@ -7,6 +7,7 @@ use App\Models\AgentApproval;
 use App\Models\AgentEvent;
 use App\Models\AgentMessage;
 use App\Models\AgentTurn;
+use App\Models\Project;
 use App\Models\User;
 use App\Services\Codex\AgentStore;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
@@ -52,18 +53,19 @@ class AgentControlsTest extends TestCase
         }
     }
 
-    public function test_creates_only_one_named_agent_with_a_server_selected_workspace(): void
+    public function test_creates_multiple_named_agents_using_only_the_owned_project_workspace(): void
     {
         $user = User::factory()->create();
-        $this->actingAs($user)->postJson('/workshop/agents', ['name' => 'Sage', 'workspace' => 'sandbox', 'workspace_path' => '/', 'binary' => 'malicious'])->assertCreated()->assertJsonPath('agent.workspace', sys_get_temp_dir());
-        $this->assertDatabaseHas('agents', ['user_id' => $user->id, 'workspace_path' => sys_get_temp_dir(), 'thread_id' => null]);
-        $this->postJson('/workshop/agents', ['name' => 'Another', 'workspace' => 'sandbox'])->assertConflict();
-        $this->assertDatabaseCount('agents', 1);
+        $project = Project::factory()->create(['user_id' => $user->id]);
+        $this->actingAs($user)->postJson('/projects/'.$project->id.'/agents', ['name' => 'Sage', 'role' => 'Reviewer', 'instructions' => 'Review tests first.', 'workspace_path' => '/', 'project_id' => 999, 'binary' => 'malicious'])->assertCreated()->assertJsonPath('agent.workspace', sys_get_temp_dir())->assertJsonPath('agent.role', 'Reviewer');
+        $this->assertDatabaseHas('agents', ['user_id' => $user->id, 'project_id' => $project->id, 'workspace_path' => sys_get_temp_dir(), 'thread_id' => null, 'instructions' => 'Review tests first.']);
+        $this->postJson('/projects/'.$project->id.'/agents', ['name' => 'Another'])->assertCreated();
+        $this->assertDatabaseCount('agents', 2);
     }
 
-    public function test_rejects_an_arbitrary_workspace_path(): void
+    public function test_an_arbitrary_workspace_cannot_create_an_agent_without_a_project(): void
     {
-        $this->actingAs(User::factory()->create())->postJson('/workshop/agents', ['name' => 'Sage', 'workspace' => '/tmp'])->assertUnprocessable()->assertJsonValidationErrors('workspace');
+        $this->actingAs(User::factory()->create())->postJson('/workshop/agents', ['name' => 'Sage', 'workspace' => '/tmp'])->assertNotFound();
         $this->assertDatabaseCount('agents', 0);
     }
 

@@ -14,7 +14,7 @@ class AgentWorkerLock
         $this->handle = fopen(config('agents.worker_lock'), 'c+e');
 
         if ($this->handle === false || ! flock($this->handle, LOCK_EX | LOCK_NB)) {
-            throw new RuntimeException('An agent worker already owns this workshop, or its lock is unavailable.');
+            throw new RuntimeException('Another agent worker is running, or its lock is unavailable. Stop that worker before selecting another agent.');
         }
     }
 

@@ -38,7 +38,7 @@ class AgentControlController extends Controller
     /** @param array<string, array<int, mixed>> $rules */
     private function submit(Request $request, Agent $agent, AgentStore $store, string $kind, array $rules): JsonResponse
     {
-        abort_unless($agent->user_id === $request->user()->id, 404);
+        abort_unless($agent->ownedBy($request->user()), 404);
         $data = $request->validate(['request_key' => ['required', 'uuid'], ...$rules]);
         $key = $data['request_key'];
         unset($data['request_key']);

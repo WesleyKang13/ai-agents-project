@@ -1,4 +1,4 @@
-import { Head } from '@inertiajs/react';
+import { Head, Link, router, usePoll } from '@inertiajs/react';
 import { useEffect, useRef, useState } from 'react';
 import AppLayout from '../layouts/AppLayout';
 import type {
@@ -7,12 +7,15 @@ import type {
     AgentMessage,
     WorkshopAgent,
     WorkshopState,
+    ProjectSummary,
+    SharedProps,
 } from '../types';
 
 type Props = {
     workshop: WorkshopState | null;
-    occupied: boolean;
-    workspaces: { key: string; name: string; path: string; available: boolean }[];
+    project: ProjectSummary;
+    agents: WorkshopAgent[];
+    navigation: SharedProps['navigation'];
     createAgentUrl: string;
 };
 const labels: Record<string, string> = {
@@ -64,12 +67,21 @@ function upsert<T extends { id: number }>(items: T[], item: T): T[] {
         : [...items, item];
 }
 
-export default function Workshop({ workshop, occupied, workspaces, createAgentUrl }: Props) {
+export default function Workshop(props: Props) {
+    return (
+        <ProjectWorkshop
+            key={`${props.project.id}-${props.workshop?.agent.id ?? 'new'}`}
+            {...props}
+        />
+    );
+}
+
+function ProjectWorkshop({ workshop, project, agents, navigation, createAgentUrl }: Props) {
+    usePoll(5000, { only: ['agents'] }, { background: 'pause', mode: 'rest' });
     const [state, setState] = useState(workshop);
     const [name, setName] = useState('');
-    const [workspace, setWorkspace] = useState(
-        workspaces.find((item) => item.available)?.key ?? '',
-    );
+    const [role, setRole] = useState('');
+    const [instructions, setInstructions] = useState('');
     const [text, setText] = useState('');
     const [steering, setSteering] = useState('');
     const [panel, setPanel] = useState<'conversation' | 'activity'>('conversation');
@@ -160,21 +172,57 @@ export default function Workshop({ workshop, occupied, workspaces, createAgentUr
 
     return (
         <AppLayout>
-            <Head title="Workshop" />
+            <Head title={`${project.name} · Workshop`} />
+            <Link
+                href={navigation.projects}
+                className="mb-6 inline-block text-sm font-medium text-forest"
+            >
+                ← Back to Projects
+            </Link>
             <div className="flex flex-wrap items-end justify-between gap-5">
                 <div>
                     <p className="text-xs font-semibold tracking-[0.2em] text-muted uppercase">
-                        Your workspace
+                        {project.name}
                     </p>
                     <h1 className="mt-3 text-4xl font-semibold tracking-tight">Workshop</h1>
-                    <p className="mt-3 max-w-lg leading-7 text-muted">
-                        A little space to think, build and make progress together.
-                    </p>
+                    <p className="mt-3 max-w-lg leading-7 text-muted">{project.folder}</p>
                 </div>
                 <span className="rounded-full border border-line px-4 py-2 text-sm text-muted">
-                    {agent ? '1 agent' : 'Your first agent'}
+                    {agents.length} {agents.length === 1 ? 'agent' : 'agents'}
                 </span>
             </div>
+            {(project.is_legacy || project.is_temporary) && (
+                <p className="mt-4 text-sm text-muted">
+                    {project.is_legacy ? 'Legacy workspace. ' : ''}
+                    {project.is_temporary
+                        ? 'Temporary folder: files may be removed by the operating system.'
+                        : ''}
+                </p>
+            )}
+            {agents.length > 0 && (
+                <nav aria-label="Project agents" className="mt-7 flex flex-wrap gap-3">
+                    {agents.map((saved) => {
+                        const item = saved.id === agent?.id ? agent : saved;
+                        return (
+                            <Link
+                                key={item.id}
+                                href={item.workshop_url}
+                                aria-current={agent?.id === item.id ? 'page' : undefined}
+                                className={`rounded-2xl border border-line px-5 py-3 hover:bg-sage ${agent?.id === item.id ? 'bg-sage' : 'bg-white/60'}`}
+                            >
+                                <span className="block font-medium">{item.name}</span>
+                                <span className="mt-1 block text-xs text-muted">
+                                    {item.role ? `${item.role} · ` : ''}
+                                    {labels[item.status] ?? 'Checking status'}
+                                </span>
+                            </Link>
+                        );
+                    })}
+                    <Link href={project.workshop_url} className={`${secondary} self-center`}>
+                        Create agent
+                    </Link>
+                </nav>
+            )}
             {error && (
                 <div
                     role="alert"
@@ -194,91 +242,83 @@ export default function Workshop({ workshop, occupied, workspaces, createAgentUr
                             id="create-heading"
                             className="mt-4 text-2xl font-medium tracking-tight"
                         >
-                            Make room for a helpful mind.
+                            {agents.length === 0
+                                ? 'No agents yet.'
+                                : 'Create an agent for this project.'}
                         </h2>
                         <p className="mt-3 leading-7 text-muted">
-                            Give your agent a name and a place to work. Your conversation and
-                            activity will stay here, ready when you return.
+                            Give your agent a name, role and instructions. It will work in this
+                            project’s folder and keep its own conversation and activity.
                         </p>
-                        {occupied ? (
-                            <p className="mt-6 rounded-xl bg-sage p-4">
-                                This personal workshop already has an agent owned by another local
-                                account.
+                        <form
+                            className="mt-7 grid gap-5"
+                            onSubmit={async (event) => {
+                                event.preventDefault();
+                                if (submitting.current) return;
+                                submitting.current = true;
+                                setBusy('create');
+                                setError('');
+                                try {
+                                    const created = await post<WorkshopState>(createAgentUrl, {
+                                        name,
+                                        role,
+                                        instructions,
+                                    });
+                                    router.visit(created.agent.workshop_url);
+                                } catch (failure) {
+                                    setError(
+                                        failure instanceof Error
+                                            ? failure.message
+                                            : 'Could not create the agent.',
+                                    );
+                                } finally {
+                                    submitting.current = false;
+                                    setBusy(null);
+                                }
+                            }}
+                        >
+                            <label className="grid gap-2 text-sm font-medium">
+                                Agent name
+                                <input
+                                    required
+                                    maxLength={80}
+                                    value={name}
+                                    onChange={(event) => setName(event.target.value)}
+                                    placeholder="For example, Sage"
+                                    className="rounded-xl border border-line bg-cream px-4 py-3"
+                                />
+                            </label>
+                            <label className="grid gap-2 text-sm font-medium">
+                                Role (optional)
+                                <input
+                                    maxLength={120}
+                                    value={role}
+                                    onChange={(event) => setRole(event.target.value)}
+                                    placeholder="For example, Laravel developer"
+                                    className="rounded-xl border border-line bg-cream px-4 py-3"
+                                />
+                            </label>
+                            <label className="grid gap-2 text-sm font-medium">
+                                Custom instructions (optional)
+                                <textarea
+                                    rows={4}
+                                    maxLength={16000}
+                                    value={instructions}
+                                    onChange={(event) => setInstructions(event.target.value)}
+                                    placeholder="How should this agent approach its work?"
+                                    className="rounded-xl border border-line bg-cream px-4 py-3"
+                                />
+                            </label>
+                            <p className="text-sm break-all text-muted">
+                                Working in {project.folder}
                             </p>
-                        ) : (
-                            <form
-                                className="mt-7 grid gap-5"
-                                onSubmit={async (event) => {
-                                    event.preventDefault();
-                                    if (submitting.current) return;
-                                    submitting.current = true;
-                                    setBusy('create');
-                                    setError('');
-                                    try {
-                                        const created = await post<WorkshopState>(createAgentUrl, {
-                                            name,
-                                            workspace,
-                                        });
-                                        cursor.current = created.cursor;
-                                        setState(created);
-                                    } catch (failure) {
-                                        setError(
-                                            failure instanceof Error
-                                                ? failure.message
-                                                : 'Could not create the agent.',
-                                        );
-                                    } finally {
-                                        submitting.current = false;
-                                        setBusy(null);
-                                    }
-                                }}
+                            <button
+                                disabled={!!busy || !name.trim()}
+                                className={`${button} justify-self-start`}
                             >
-                                <label className="grid gap-2 text-sm font-medium">
-                                    Agent name
-                                    <input
-                                        required
-                                        maxLength={80}
-                                        value={name}
-                                        onChange={(event) => setName(event.target.value)}
-                                        placeholder="For example, Sage"
-                                        className="rounded-xl border border-line bg-cream px-4 py-3"
-                                    />
-                                </label>
-                                <label className="grid gap-2 text-sm font-medium">
-                                    Working directory
-                                    <select
-                                        required
-                                        value={workspace}
-                                        onChange={(event) => setWorkspace(event.target.value)}
-                                        className="min-w-0 rounded-xl border border-line bg-cream px-4 py-3"
-                                    >
-                                        <option value="" disabled>
-                                            Choose a workspace
-                                        </option>
-                                        {workspaces.map((item) => (
-                                            <option
-                                                key={item.key}
-                                                value={item.key}
-                                                disabled={!item.available}
-                                            >
-                                                {item.name}
-                                                {!item.available ? ' — unavailable' : ''}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </label>
-                                <p className="text-sm break-all text-muted">
-                                    {workspaces.find((item) => item.key === workspace)?.path ??
-                                        'No workspace is available. Ask the workshop owner to prepare one.'}
-                                </p>
-                                <button
-                                    disabled={!!busy || !workspace}
-                                    className={`${button} justify-self-start`}
-                                >
-                                    {busy === 'create' ? 'Creating…' : 'Create agent'}
-                                </button>
-                            </form>
-                        )}
+                                {busy === 'create' ? 'Creating…' : 'Create agent'}
+                            </button>
+                        </form>
                     </div>
                 </section>
             ) : (
@@ -311,7 +351,8 @@ export default function Workshop({ workshop, occupied, workspaces, createAgentUr
                             {agent.workspace}
                         </p>
                         <p className="px-2 text-xs leading-5 text-muted">
-                            Your agent keeps working when you close this tab.
+                            This agent keeps working while its worker is running, even when you
+                            close this tab.
                         </p>
                     </aside>
                     {open && (
@@ -357,6 +398,30 @@ export default function Workshop({ workshop, occupied, workspaces, createAgentUr
                                     )}
                                 </div>
                             )}
+                            <details
+                                open={!agent.online}
+                                className="border-b border-line px-5 py-4 text-sm"
+                            >
+                                <summary className="cursor-pointer font-medium">
+                                    Agent instructions and worker
+                                </summary>
+                                <div className="mt-3 grid gap-3">
+                                    <p>Role: {agent.role || 'General assistant'}</p>
+                                    <p className="whitespace-pre-wrap break-words">
+                                        {agent.instructions || 'No custom instructions.'}
+                                    </p>
+                                    <p className="text-muted">
+                                        In a WSL terminal at the AI Agents Project checkout, run:
+                                    </p>
+                                    <code className="rounded-xl bg-sage/40 p-3 break-all">
+                                        {agent.worker_command}
+                                    </code>
+                                    <p className="text-xs leading-5 text-muted">
+                                        One worker runs at a time. Press Ctrl+C in its terminal
+                                        before starting another agent’s worker.
+                                    </p>
+                                </div>
+                            </details>
                             {pending.length > 0 && (
                                 <div className="grid gap-4 border-b border-line bg-amber-50 p-5">
                                     {pending.map((approval) => (

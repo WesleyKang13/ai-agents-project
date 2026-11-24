@@ -12,7 +12,7 @@ class AgentEventController extends Controller
 {
     public function __invoke(Request $request, Agent $agent, AgentPresenter $presenter): StreamedResponse
     {
-        abort_unless($agent->user_id === $request->user()->id, 404);
+        abort_unless($agent->ownedBy($request->user()), 404);
         $request->validate(['after' => ['sometimes', 'integer', 'min:0']]);
         $header = $request->header('Last-Event-ID', '0');
         abort_unless(ctype_digit($header), 422, 'Invalid event cursor.');

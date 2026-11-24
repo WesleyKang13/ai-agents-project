@@ -19,14 +19,15 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->redirectUsersTo('/projects');
         $middleware->web(append: [HandleInertiaRequests::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
-            fn (Request $request) => $request->is('api/*', 'workshop/agents*') || $request->expectsJson(),
+            fn (Request $request) => $request->is('api/*', 'workshop/agents*', 'projects/*/agents', 'projects/folders') || $request->expectsJson(),
         );
         $exceptions->report(function (Throwable $exception): ?bool {
-            if (request()->is('workshop/agents*')) {
+            if (request()->is('workshop/agents*', 'projects/*/agents', 'projects/folders')) {
                 Log::error('Workshop request failed.', ['exception_type' => $exception::class]);
 
                 return false;
@@ -35,7 +36,7 @@ return Application::configure(basePath: dirname(__DIR__))
             return null;
         });
         $exceptions->render(function (Throwable $exception, Request $request): ?JsonResponse {
-            if (! $request->is('workshop/agents*')) {
+            if (! $request->is('workshop/agents*', 'projects/*/agents', 'projects/folders')) {
                 return null;
             }
 

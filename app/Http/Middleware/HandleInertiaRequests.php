@@ -42,7 +42,7 @@ class HandleInertiaRequests extends Middleware
             'logoutUrl' => route('logout', absolute: false),
             'navigation' => [
                 'home' => route('home', absolute: false),
-                'workshop' => route('workshop', absolute: false),
+                'projects' => route('projects.index', absolute: false),
             ],
         ];
     }

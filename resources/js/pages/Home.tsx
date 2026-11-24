@@ -15,14 +15,14 @@ export default function Home({ projectName, navigation }: SharedProps) {
                         Good work starts with a little space.
                     </h1>
                     <p className="max-w-lg text-base leading-7 text-muted">
-                        {projectName} is taking shape: a shared workshop where you’ll manage your
-                        Codex agents, follow their tasks and keep work moving.
+                        Organise your Codex agents by project, follow their tasks and keep each
+                        conversation close to the work.
                     </p>
                     <Link
-                        href={navigation.workshop}
+                        href={navigation.projects}
                         className="inline-flex items-center gap-4 rounded-full bg-forest px-6 py-3 text-sm font-medium text-cream transition-colors hover:bg-ink"
                     >
-                        Open workshop <span aria-hidden="true">↗</span>
+                        Open Projects <span aria-hidden="true">↗</span>
                     </Link>
                 </div>
                 <aside className="rounded-3xl border border-line bg-sage/60 p-8 sm:p-10">
@@ -30,13 +30,13 @@ export default function Home({ projectName, navigation }: SharedProps) {
                         A place to build together
                     </p>
                     <h2 className="mt-6 text-2xl font-medium tracking-tight">
-                        One workshop.
+                        Your projects.
                         <br />
                         Room for your whole team.
                     </h2>
                     <p className="mt-5 leading-7 text-muted">
-                        Your first agent is ready to join you. Send a task, follow its progress and
-                        keep the conversation going in your private workshop.
+                        Add an existing folder, open its Workshop and create the agents you need.
+                        Each agent keeps its own instructions, conversation and activity.
                     </p>
                 </aside>
             </section>

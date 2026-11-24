@@ -24,8 +24,11 @@ class AgentPresenter
 
         return [
             'id' => $agent->id, 'name' => $agent->name, 'workspace' => $agent->workspace_path,
+            'project_id' => $agent->project_id, 'role' => $agent->role, 'instructions' => $agent->instructions,
+            'worker_command' => 'php artisan agents:work '.$agent->id.' --user='.$agent->user_id,
+            'workshop_url' => route('projects.workshop', ['project' => $agent->project_id, 'agent' => $agent->id], absolute: false),
             'status' => $status, 'online' => $online, 'active_turn_id' => $agent->active_turn_id,
-            'notice' => $online ? $agent->notice : 'The agent worker is offline. Start it to reconnect and check the saved conversation.',
+            'notice' => $online ? $agent->notice : 'This agent’s worker is offline. Start its worker to reconnect and check the saved conversation. Only one worker can run at a time.',
             'can_recover' => $online && $agent->status === 'needs_recovery' && $agent->reconciled_at !== null,
             'urls' => collect(['state', 'events', 'tasks', 'steer', 'stop', 'decisions', 'recover'])->mapWithKeys(fn (string $action): array => [$action => route('agents.'.$action, $agent, absolute: false)])->all(),
         ];

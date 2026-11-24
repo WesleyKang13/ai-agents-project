@@ -1,166 +1,81 @@
 # AI Agents Project
 
-A personal dashboard for managing Codex agents. The foundation provides Laravel, Inertia, React, TypeScript, a minimal Workshop at `/workshop`, and local PostgreSQL. Milestone 2 adds a verified Artisan harness for Codex App Server. Browser controls are reserved for milestone 3; see [the implementation checklist](docs/implementation-checklist.md).
+A local WSL dashboard for project-owned Codex agents, built with Laravel, Inertia, React and TypeScript. Sign in to **Projects**, register an existing server folder, then open its **Workshop** and create agents with independent roles, instructions, conversations, activity and controls.
 
-## Start this configured WSL checkout
+## Start this configured checkout
 
-From the repository root in WSL:
-
-```sh
-bash scripts/postgres.sh start
-composer run dev
-```
-
-Open [the workshop](http://localhost:8000/workshop) or [home](http://localhost:8000). Keep the command running for Laravel and Vite hot reload. Ctrl+C stops both web processes. PostgreSQL runs separately; stop it with `bash scripts/postgres.sh stop` and inspect it with `bash scripts/postgres.sh status`.
-
-The current `.env` uses `ai_agents_dev` / `ai_agents_app` on `127.0.0.1:5433`. Its generated password stays private. The original environment, including the existing MySQL credentials, was preserved in ignored `.env.backup`. Unrelated environment settings and the application key were retained. Neither local file belongs in Git.
-
-## Set up another WSL checkout
-
-Keep the project in the Linux filesystem, for example `~/projects/ai-agents-project`. Run PHP, Composer, Node and npm inside WSL.
-
-Requirements: PHP 8.3+ with `pdo_pgsql`, Composer 2, Node 20.19+ or 22.12+, npm, and PostgreSQL server/client binaries (`pg_config`, `initdb`, `pg_ctl`, `psql`). Check them before installing dependencies:
-
-```sh
-php -v
-composer -V
-node -v
-npm -v
-php --ri pdo_pgsql
-psql --version
-pg_config --bindir
-composer install
-npm ci
-test -f .env || cp .env.example .env
-```
-
-On Ubuntu, missing PostgreSQL components can be installed with `sudo apt install postgresql postgresql-client libpq-dev php8.3-pgsql` when using the PHP 8.3 package repository. Match the PHP extension package to your installed PHP version. Package installation requires system permissions.
-
-If `APP_KEY` is empty in the new `.env`, run `php artisan key:generate`. Retain an existing key. Configure PostgreSQL using one of these approaches.
-
-### Project-local PostgreSQL (no sudo)
-
-The helper initializes a private cluster under ignored `.local/postgres`, listens on loopback port 5433, and uses peer authentication for its owner and password authentication for TCP clients. It reuses the cluster on subsequent starts.
+From `/home/wesley/projects/ai-agents-project` in WSL:
 
 ```sh
 bash scripts/postgres.sh start
-createuser --host="$PWD/.local/postgres" --port=5433 --pwprompt --no-superuser --no-createdb --no-createrole ai_agents_app
-createdb --host="$PWD/.local/postgres" --port=5433 --owner=ai_agents_app ai_agents_dev
-```
-
-Create the role/database only once. Enter a new development password at the prompt and put the same password in `.env`. The other `DB_*` defaults in `.env.example` match this cluster. `PG_DEV_PORT=5434 bash scripts/postgres.sh start` can select another port if needed; update `DB_PORT` to match. Stop the cluster before changing its port. Do not remove `.local/postgres` to resolve a startup issue; check `.local/postgres/server.log` first.
-
-### Existing system PostgreSQL
-
-Alternatively, start your existing service with `sudo service postgresql start`. With database administrator access, create a dedicated login role and an owned development database:
-
-```sh
-sudo -u postgres createuser --pwprompt --no-superuser --no-createdb --no-createrole ai_agents_app
-sudo -u postgres createdb --owner=ai_agents_app ai_agents_dev
-```
-
-Use the server's actual host/port (normally `127.0.0.1:5432`) and the chosen password in `.env`. Preserve any existing credentials before changing values. A configured `DB_URL` overrides individual connection settings.
-
-### Finish setup
-
-After checking that `.env` targets the intended development database:
-
-```sh
 php artisan config:clear
-php artisan migrate
-php artisan migrate:status
+php artisan migrate --no-interaction
 npm run build
 composer run dev
 ```
 
-`migrate` applies pending migrations without resetting existing data. PHP feature tests use the existing isolated SQLite in-memory configuration, not the development database. The foundation dev command starts Laravel and Vite; a queue worker is not needed yet. After dependency changes, rerun `npm ci` and the build.
+Open the local app at the address printed by Artisan (normally port 8000), then sign in with your existing account. Login always opens Projects. The old `/workshop` address redirects there. `composer run dev` starts Laravel with multiple HTTP workers and Vite so SSE does not block controls. Ctrl+C stops those web processes; PostgreSQL runs separately (`bash scripts/postgres.sh status` / `stop`).
 
-Laravel Boost is installed for development. Follow `AGENTS.md`; `php artisan boost:install --no-interaction` refreshes its generated guidelines, skills and MCP configuration. MCP clients need to reload configuration to discover a newly installed server.
+The additive project migration preserves existing users, credentials, agents, thread IDs, messages, events, controls and approvals. Existing agents become members of **Legacy workspace — …** projects owned by their original users. Sandbox folders retain a **Temporary** label; `/tmp` can be cleared by the OS. No account transfer, reset or reseed is needed. Stop an old `agents:work` process with Ctrl+C before migrating, then use the new explicit command below. The project migration is deliberately forward-only: rollback refuses to discard registered projects or conversations.
 
-## Codex App Server spike (milestone 2)
+The existing private `.env` keeps PostgreSQL database `ai_agents_dev`, role `ai_agents_app` and port 5433. Keep its password, application key, `.env.backup`, `.local` data and Codex credentials private. Do not run `migrate:fresh`, reset the database, regenerate an existing application key or seed sample data.
 
-Run from this checkout in a normal WSL terminal, with the same Linux user and authenticated Codex installation:
+This checkout’s upgrade is already applied. Verification reconnected Sage to its existing thread without a model task, then stopped the worker. Its missing disposable folder was recreated empty; the saved 35 messages and 16 turns remain. The PHP suite (98 tests), type check, build and formatting passed; interactive browser acceptance was not rerun because no browser driver is installed.
 
-```sh
-codex --version
-codex login status
-php artisan codex:spike
+## Add a real project and its first agent
+
+1. On Projects, choose **Add existing project** and enter a name.
+2. In the server folder browser, open `/home/wesley/projects`, then navigate to an existing project folder and choose **Use this folder** → **Add project**.
+3. Its Workshop initially has **0 agents**. Enter an agent name, optional role and custom instructions, then choose **Create agent**.
+4. Select an agent to open its conversation/activity panel. **Back to Projects** returns to the list; **Create agent** adds another independent agent to the same project.
+
+Folder selection refers to the machine running Laravel/Codex, not your browser’s computer. The browser loads one directory level at a time. Registration validates existence, canonical path, read/write/traverse access, allowed roots and symlink escapes. It rejects duplicate canonical folders for the same owner. It only registers the folder: no upload, copy, deletion, Git initialization or change to its files. Git is not required.
+
+Configure permitted roots in `.env` (a colon-separated list on Linux):
+
+```dotenv
+PROJECT_ALLOWED_ROOTS=/home/wesley/projects
 ```
 
-The default task asks for `SPIKE_OK` without tools. The command creates a private disposable Git repository under `/tmp/ai-agents-spike-*`, starts its own `codex app-server --listen stdio://`, initializes the protocol, checks the existing ChatGPT login, creates a thread and streams numbered activity, text and the terminal status. It prints the workspace, thread and turn IDs. Neither Laravel's web server nor PostgreSQL needs to be running for this command.
+This is also the default in `config/agents.php`; run `php artisan config:clear` and restart workers after changing it. New project registration and execution revalidate the configured boundary. Legacy projects are exempt only from this root restriction, so existing saved workspaces continue to work; they still require their original canonical directory and permissions. Registered folders, owners and agent project assignments are immutable.
 
-Verified with `codex-cli 0.171.0`, executable `/home/wesley/.nvm/versions/node/v20.19.5/bin/codex` (npm's `@openai/codex/bin/codex.js` wrapper). This requires Linux/WSL, PHP `pcntl`/`posix`, `/usr/bin/setsid` and Git. `CODEX_BINARY=/absolute/path/to/codex php artisan codex:spike` selects another executable without changing dependencies or `.env`.
+## Start the selected agent’s worker
 
-Reuse the **workspace and thread printed by the same run** to verify resumption in a fresh App Server process:
+In another WSL terminal **at this dashboard checkout**, run the exact command displayed under **Agent instructions and worker** in that agent’s panel:
 
 ```sh
-php artisan codex:spike --workspace=/tmp/ai-agents-spike-REPLACE --thread=REPLACE \
-  --task='What exact token did you reply with in the preceding turn? Reply only with that token. Do not use tools.'
+php artisan agents:work AGENT_ID --user=OWNER_ID
 ```
 
-The workspace retains its thread identity and rejects another session's thread. Starting a new thread in the same workspace replaces that retained identity. Temporary workspaces remain available until you remove them or the OS clears `/tmp`; Codex stores its own conversation history in its existing private home. The application database has no agent tables yet.
-
-Exercise a real permission request in an interactive terminal:
+Replace both placeholders with the numeric IDs from the panel. For the preserved Sage in this configured database:
 
 ```sh
-php artisan codex:spike --timeout=300 \
-  --task='Run python3 -c "print(73519)" exactly once using the shell tool in cwd. If permission is denied, stop and report DENIED. Do not try alternatives.'
+php artisan agents:work 1 --user=2
 ```
 
-Inspect the displayed command, workspace and request ID. Enter `allow 0`, `deny 0` or `cancel 0` **only if `0` is the displayed pending ID**; use the exact displayed JSON ID otherwise (including quotes for string IDs). `allow` authorizes that request once. There are no session grants or policy amendments. Permission-profile requests grant only the displayed requested profile for the current turn. Unattended runs with `--no-interaction`, or `--approval=deny`, reject requests. Unsupported server requests receive RPC error `-32601`. This CLI offered `accept` and `cancel` for the tested Python command: denial therefore used `cancel`, produced a `declined` command item and interrupted the turn.
+The worker validates both the explicit agent and project owner. It never chooses the first saved agent or switches projects. One global process lock intentionally permits **one running worker at a time**: press Ctrl+C in its terminal before starting another agent’s command. Other agents remain saved and offline. This is a local operator command; `--user` checks the selection, not an additional login mechanism.
 
-Cancel a running turn, or press Ctrl+C during any run:
+When the agent is Ready, send a task or follow-up. While it is working, use **Send steering**, **Stop task**, or the exact displayed permission request’s **Approve once / Deny** controls. Browser disconnection does not stop its worker. SSE reconnects to saved events. After an uncertain worker failure, restart that same command, inspect recovered history and choose **Resume conversation** if prompted. Tasks and approval grants are never automatically replayed.
 
-```sh
-php artisan codex:spike --cancel-after=2 --no-interaction \
-  --task='Run a shell command that sleeps for 30 seconds, then reply DONE. Work only in cwd.'
-```
+The worker starts its own `codex app-server --listen stdio://` using the existing ChatGPT CLI login. Check `codex --version` and `codex login status` as your normal WSL user; the installed compatibility reference is CLI 0.171.0. `CODEX_BINARY` in `.env` can select an absolute executable. Each thread receives only that agent’s role/instructions through the App Server request; global Codex configuration and project `AGENTS.md` are untouched. No API key, daemon repair or new authentication provider is needed.
 
-Exit codes: `0` for `completed`, `1` for a failed turn or harness/protocol error, `130` for `interrupted`, and `124` for a timeout. `--timeout=120` bounds a turn including time waiting for permission; `--request-timeout=20` bounds startup/individual RPC waits. Both accept positive seconds up to 3600. Cancellation sends `turn/interrupt`, waits up to five seconds for the terminal event, then closes the owned server. Cleanup closes stdin, allows one second for exit, then uses TERM/KILL for its owned process group and tracked descendants, checking Linux start times before signaling individual PIDs. It never searches for or kills processes by name. Ctrl+C was verified both at an approval prompt and with an approved sandboxed Python child running.
+## Another WSL checkout
 
-The harness reuses Symfony Process 7.4 already installed by Laravel; no new PHP/JS dependency, login provider or API key is introduced. It requires ChatGPT-managed CLI authentication and refuses other account types. Tasks use the CLI's configured model (observed: `gpt-6.1-sol`) and existing ChatGPT usage allowances. The child receives an allowlist of user/runtime environment variables, excluding application/database secrets and API keys. Account details, raw stderr and RPC error text are suppressed; stderr byte counts and safe failure codes remain visible. Model output and approval context go only to the terminal; do not put secrets in tasks or capture sensitive terminal output. Credentials remain in Codex's private setup, outside Laravel and frontend props.
+Use PHP 8.3+ (`pdo_pgsql`, `pdo_sqlite` for offline tests, `pcntl`, `posix`), Composer 2, Node 20.19+ or 22.12+, npm, PostgreSQL and an authenticated Linux Codex CLI. Install locked dependencies with `composer install` and `npm ci`. Copy `.env.example` only if `.env` is absent; generate an application key only if it is empty. Configure your dedicated PostgreSQL database, root paths and CLI executable before using the startup commands above.
 
-Direct App Server startup **works independently of the CLI daemon**. No daemon, proxy, `--no-daemon`, login/logout or authentication-file edits are needed here. In the agent's restricted command sandbox, App Server exited with `Read-only file system`; live checks required permission to access existing Codex runtime files. Normal WSL execution passed. The CLI warned that no system bubblewrap was present and used its bundled copy successfully.
+`scripts/postgres.sh` can initialize a project-local PostgreSQL cluster on port 5433. For a new cluster only, create the app role/database with `createuser --host="$PWD/.local/postgres" --port=5433 --pwprompt --no-superuser --no-createdb --no-createrole ai_agents_app` and `createdb --host="$PWD/.local/postgres" --port=5433 --owner=ai_agents_app ai_agents_dev`; put the chosen password in `.env`. Existing clusters/databases must be reused. For a new local login, `php artisan workshop:user your-email@example.com` prompts for its password; existing users do not need this.
 
-Inspect the installed interface and regenerate version-matched schemas after changing Codex:
+## Verification and limits
 
 ```sh
-command -v codex
-codex app-server --help
-codex app-server generate-json-schema --help
-codex app-server generate-json-schema --out .local/codex-schema-0.171.0
-```
-
-The implementation follows the official [App Server guide](https://developers.openai.com/codex/app-server/) and the installed CLI's generated schemas: bidirectional JSON-RPC messages over newline-delimited stdio, omitting the `jsonrpc` header; `initialize`/`initialized`, then thread and turn methods. Installed help also lists Unix sockets, WebSockets and `off`; this spike exposes no listening socket. The protocol is CLI-version-sensitive, not a standalone version-negotiated contract.
-
-Limitations: this is a single-turn local harness, not a durable worker or browser API. It does not replay work or reconnect a running turn after losing the process. Resumption requires the saved Codex history, original workspace and a new handshake; unresolved approvals must be obtained again, never replayed. SIGKILL, machine failure and children that detach before they can be observed require stronger external process supervision. File-change and permission-profile approvals have handlers, but live verification exercised command approvals only. Failed model turns and protocol/lifecycle errors are covered offline; no model failure was intentionally induced. No milestone 3 browser controls were added.
-
-For milestone 3, use Laravel **SSE for ordered browser events plus authenticated HTTP POST controls**, with persisted event sequence numbers for reconnection. A supervised long-running Laravel worker should own each App Server's stdio connection, consume control messages and persist thread/turn/approval state; HTTP requests and browser tabs should not own the process. Use a process supervisor/cgroup for crash cleanup, and resume persisted threads deliberately after a restart without automatically resending tasks. Confirm this architecture before implementing browser controls.
-
-## Verification
-
-```sh
-composer test
+php artisan test --compact
 npm run types:check
 npm run build
 npm run format:check
 vendor/bin/pint --dirty --format agent
-composer validate --no-check-publish
-bash -n scripts/postgres.sh
+git diff --check
 ```
 
-Use `php artisan test --filter=WorkshopTest` for a focused run. Use `npm run format` to format the frontend. HTTP tests disable Vite assets so they can run before a frontend build. The production build and live HTTP checks verify assets separately.
+PHP tests use isolated SQLite memory databases. Codex worker/protocol tests use mocked clients or a scripted PHP peer and do not contact a model or modify the normal database. The optional `codex:spike` CLI harness remains for deliberate protocol diagnostics, not normal startup. The existing opt-in `tests/Fixtures/workshop-browser.mjs` requires an externally installed browser driver, an existing account file and explicit `WORKSHOP_PROJECT_ID` / `WORKSHOP_AGENT_ID`; it creates no records and sends no model task unless `WORKSHOP_LIVE_TASK=1` permits one tiny task. See [the checklist](docs/implementation-checklist.md) for actual verification evidence.
 
-The Codex tests are offline. Command tests mock the App Server client; protocol/lifecycle tests launch a scripted PHP peer in `tests/Fixtures/codex-peer.php`, including a child in a separate process group. Neither launches Codex nor contacts a model:
-
-```sh
-php artisan test --compact tests/Feature/CodexSpikeTest.php tests/Unit/Services/Codex
-```
-
-Live Codex verification is opt-in through `php artisan codex:spike`; observed commands, protocol examples and outcomes are recorded in the checklist.
-
-Verified on WSL2 with PHP 8.3.30, Composer 2.2.6, Node 20.19.5, npm 10.8.2 and PostgreSQL 14.24. Locked packages include Laravel 13.43, Inertia Laravel 3.7 / React adapter 3.11, React 19.3, TypeScript 7.0, Vite 8.3 and Tailwind 4.3. `concurrently` 9 supports this Node runtime; the skeleton's 10.x series required Node 22. Composer 2.2 emits dependency deprecation notices under PHP 8.3, but installation, tests and validation pass.
-
-Manual Inertia integration follows the current official [server setup](https://inertiajs.com/docs/v3/installation/server-side-setup), [React/Vite setup](https://inertiajs.com/docs/v3/installation/client-side-setup) and [Laravel Vite guide](https://laravel.com/docs/13.x/vite), checked against installed package metadata and Boost's version-specific documentation. System fonts keep the build independent of external font downloads.
-
-The checklist records verification results and limitations. The foundation and App Server spike are for local development; application authentication, browser agent controls and release readiness remain future work.
+This step supports multiple saved agents with sequential manual execution. There are no queues, dependencies, automatic handoffs, concurrent scheduling, remote computer connections or production supervision. Agents in one project share its files while keeping separate conversations. Folder validation is an application boundary, not OS isolation from a hostile local filesystem administrator. SIGKILL/machine failures and rapidly detached children still need stronger external process supervision. File-change/profile approvals have offline coverage only; previous live verification exercised command approvals.

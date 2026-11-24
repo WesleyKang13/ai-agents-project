@@ -13,7 +13,8 @@ class PersonalLoginTest extends TestCase
     public function test_signs_in_with_a_local_account_and_signs_out(): void
     {
         $user = User::factory()->create();
-        $this->post('/login', ['email' => $user->email, 'password' => 'password'])->assertRedirect('/workshop');
+        $this->withSession(['url.intended' => '/workshop']);
+        $this->post('/login', ['email' => $user->email, 'password' => 'password'])->assertRedirect('/projects');
         $this->assertAuthenticatedAs($user);
         $this->post('/logout')->assertRedirect('/login');
         $this->assertGuest();

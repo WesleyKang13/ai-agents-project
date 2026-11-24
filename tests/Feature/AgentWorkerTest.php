@@ -16,6 +16,7 @@ use Closure;
 use Illuminate\Foundation\Testing\LazilyRefreshDatabase;
 use Illuminate\Support\Str;
 use Mockery\MockInterface;
+use PHPUnit\Framework\Attributes\TestWith;
 use RuntimeException;
 use Tests\TestCase;
 
@@ -37,10 +38,61 @@ class AgentWorkerTest extends TestCase
     /** @var list<array<string, mixed>> */
     private array $decisions = [];
 
+    /** @var list<array<string, mixed>> */
+    private array $threadParameters = [];
+
     protected function setUp(): void
     {
         parent::setUp();
         config(['agents.workspaces.sandbox.path' => sys_get_temp_dir()]);
+    }
+
+    #[TestWith([false])]
+    #[TestWith([true])]
+    public function test_thread_start_and_resume_use_only_this_agents_workspace_role_and_instructions(bool $resuming): void
+    {
+        $other = Agent::factory()->create(['thread_id' => 'other-thread', 'role' => 'Other role', 'instructions' => 'Other private instructions']);
+        $agent = $this->agent();
+        $agent->update(['thread_id' => $resuming ? 'thread-test' : null, 'role' => 'Test reviewer', 'instructions' => 'Review security boundaries first.']);
+        $this->peer(function (): void {}, $resuming);
+
+        $this->assertTrue($this->worker()->run($agent, fn (): bool => true));
+
+        $parameters = $this->threadParameters[0];
+        $this->assertSame($agent->workspace_path, $parameters['cwd']);
+        $this->assertStringContainsString('Role: Test reviewer', $parameters['developerInstructions']);
+        $this->assertStringContainsString('Review security boundaries first.', $parameters['developerInstructions']);
+        $this->assertStringNotContainsString('Other private instructions', $parameters['developerInstructions']);
+        $this->assertArrayNotHasKey('config', $parameters);
+        $this->assertSame('other-thread', $other->fresh()->thread_id);
+        $this->assertSame('idle', $other->status);
+        $this->assertDatabaseMissing('agent_events', ['agent_id' => $other->id]);
+        $this->assertDatabaseCount('agent_controls', 0);
+    }
+
+    public function test_worker_leaves_another_agents_pending_controls_and_approvals_untouched(): void
+    {
+        $other = Agent::factory()->create(['thread_id' => 'other-thread']);
+        $turn = AgentTurn::factory()->create(['agent_id' => $other->id, 'codex_id' => 'other-turn', 'status' => 'running']);
+        $other->update(['active_turn_id' => $turn->id, 'status' => 'waiting_permission']);
+        $control = AgentControl::factory()->create(['agent_id' => $other->id, 'agent_turn_id' => $turn->id]);
+        $approval = AgentApproval::factory()->create(['agent_id' => $other->id, 'agent_turn_id' => $turn->id, 'connection_id' => $other->connection_id]);
+        $selected = $this->agent();
+        $this->peer(function (): void {});
+        $done = false;
+
+        $this->worker()->run($selected, function () use (&$done): bool {
+            $stop = $done;
+            $done = true;
+
+            return $stop;
+        });
+
+        $this->assertSame([], $this->calls);
+        $this->assertSame('pending', $control->fresh()->status);
+        $this->assertSame('pending', $approval->fresh()->status);
+        $this->assertSame('waiting_permission', $other->fresh()->status);
+        $this->assertDatabaseMissing('agent_events', ['agent_id' => $other->id]);
     }
 
     public function test_streams_and_persists_completion_even_before_the_start_response(): void
@@ -164,6 +216,18 @@ class AgentWorkerTest extends TestCase
         $this->permissionCase('deny', ['decision' => 'cancel']);
     }
 
+    #[TestWith(['item/fileChange/requestApproval', 'allow'])]
+    #[TestWith(['item/fileChange/requestApproval', 'deny'])]
+    #[TestWith(['item/permissions/requestApproval', 'allow'])]
+    #[TestWith(['item/permissions/requestApproval', 'deny'])]
+    public function test_file_and_permission_profile_decisions_remain_scoped_to_the_exact_request(string $method, string $decision): void
+    {
+        $expected = $method === 'item/permissions/requestApproval'
+            ? ['permissions' => $decision === 'allow' ? (object) ['network' => ['enabled' => true]] : (object) [], 'scope' => 'turn']
+            : ['decision' => $decision === 'allow' ? 'accept' : 'cancel'];
+        $this->permissionCase($decision, $expected, $method);
+    }
+
     public function test_lost_start_response_leaves_work_uncertain_and_does_not_retry(): void
     {
         $agent = $this->agent();
@@ -246,17 +310,20 @@ class AgentWorkerTest extends TestCase
     }
 
     /** @param array<string, mixed> $expected */
-    private function permissionCase(string $decision, array $expected): void
+    private function permissionCase(string $decision, array $expected, string $method = 'item/commandExecution/requestApproval'): void
     {
         $agent = $this->agent();
         $phase = 0;
         $done = false;
-        $this->peer(function () use ($agent, $decision, &$phase, &$done): void {
+        $this->peer(function () use ($agent, $decision, $method, &$phase, &$done): void {
             if ($phase === 0) {
                 $this->task($agent);
             } elseif ($phase === 1) {
                 $this->started();
-                $request = ['id' => 0, 'method' => 'item/commandExecution/requestApproval', 'params' => ['threadId' => 'thread-test', 'turnId' => 'turn-native', 'itemId' => 'command-1', 'command' => 'python3 -c "print(1)"', 'cwd' => sys_get_temp_dir(), 'availableDecisions' => ['accept', 'cancel']]];
+                $request = ['id' => 0, 'method' => $method, 'params' => ['threadId' => 'thread-test', 'turnId' => 'turn-native', 'itemId' => 'command-1', 'command' => 'python3 -c "print(1)"', 'cwd' => sys_get_temp_dir(), 'availableDecisions' => ['accept', 'cancel']]];
+                if ($method === 'item/permissions/requestApproval') {
+                    $request['params']['permissions'] = ['network' => ['enabled' => true]];
+                }
                 $this->nativeRequests = [$request];
                 ($this->observer)($request);
                 $this->responses[10] = ['id' => 10, 'result' => ['turn' => ['id' => 'turn-native']]];
@@ -274,7 +341,7 @@ class AgentWorkerTest extends TestCase
         $this->worker()->run($agent, function () use (&$done): bool {
             return $done;
         });
-        $this->assertSame([['id' => 0, 'result' => $expected]], $this->decisions);
+        $this->assertSame(json_encode([['id' => 0, 'result' => $expected]], JSON_THROW_ON_ERROR), json_encode($this->decisions, JSON_THROW_ON_ERROR));
         $this->assertSame($decision === 'allow' ? 'accepted' : 'denied', AgentApproval::query()->sole()->status);
     }
 
@@ -292,7 +359,11 @@ class AgentWorkerTest extends TestCase
             $mock->shouldReceive('request')->with('initialize', \Mockery::any(), \Mockery::any(), \Mockery::any())->times($connections)->andReturn([]);
             $mock->shouldReceive('notify')->with('initialized')->times($connections);
             $mock->shouldReceive('request')->with('account/read', ['refreshToken' => false], \Mockery::any(), \Mockery::any())->times($connections)->andReturn(['account' => ['type' => 'chatgpt']]);
-            $mock->shouldReceive('request')->with($resuming ? 'thread/resume' : 'thread/start', \Mockery::any(), \Mockery::any(), \Mockery::any())->once()->andReturn(['thread' => ['id' => 'thread-test']]);
+            $mock->shouldReceive('request')->with($resuming ? 'thread/resume' : 'thread/start', \Mockery::any(), \Mockery::any(), \Mockery::any())->once()->andReturnUsing(function (string $method, array $params): array {
+                $this->threadParameters[] = $params;
+
+                return ['thread' => ['id' => 'thread-test']];
+            });
             if ($rotate) {
                 $mock->shouldReceive('renew')->once();
                 $mock->shouldReceive('request')->with('thread/resume', \Mockery::any(), \Mockery::any(), \Mockery::any())->once()->andReturn(['thread' => ['id' => 'thread-test']]);

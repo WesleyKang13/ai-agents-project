@@ -4,6 +4,8 @@ use App\Http\Controllers\AgentControlController;
 use App\Http\Controllers\AgentController;
 use App\Http\Controllers\AgentEventController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\ProjectFolderController;
 use App\Http\Controllers\SessionController;
 use App\Http\Controllers\WorkshopController;
 use Illuminate\Support\Facades\Route;
@@ -15,8 +17,12 @@ Route::middleware('guest')->group(function (): void {
 });
 Route::middleware('auth')->group(function (): void {
     Route::post('/logout', [SessionController::class, 'destroy'])->name('logout');
-    Route::get('/workshop', WorkshopController::class)->name('workshop');
-    Route::post('/workshop/agents', [AgentController::class, 'store'])->middleware('throttle:30,1')->name('agents.store');
+    Route::redirect('/workshop', '/projects')->name('workshop');
+    Route::get('/projects', [ProjectController::class, 'index'])->name('projects.index');
+    Route::post('/projects', [ProjectController::class, 'store'])->middleware('throttle:30,1')->name('projects.store');
+    Route::get('/projects/folders', ProjectFolderController::class)->middleware('throttle:90,1')->name('projects.folders');
+    Route::get('/projects/{project}/workshop', WorkshopController::class)->name('projects.workshop');
+    Route::post('/projects/{project}/agents', [AgentController::class, 'store'])->middleware('throttle:30,1')->name('agents.store');
     Route::get('/workshop/agents/{agent}', [AgentController::class, 'show'])->name('agents.state');
     Route::get('/workshop/agents/{agent}/events', AgentEventController::class)->name('agents.events');
     Route::prefix('/workshop/agents/{agent}')->middleware('throttle:90,1')->group(function (): void {

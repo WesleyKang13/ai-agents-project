@@ -2,17 +2,12 @@
 
 namespace Database\Seeders;
 
-use App\Models\Agent;
-use App\Models\User;
-use App\Services\Codex\AgentStore;
 use Illuminate\Database\Seeder;
 
 class AgentSeeder extends Seeder
 {
-    public function run(AgentStore $store): void
+    public function run(): void
     {
-        if (! Agent::query()->exists()) {
-            $store->create(User::query()->sole(), 'Sage', 'sandbox');
-        }
+        // Agents are created deliberately inside an owned project in the Workshop.
     }
 }

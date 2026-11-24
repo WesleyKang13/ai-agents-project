@@ -12,7 +12,7 @@ export default function Login({ loginUrl }: { loginUrl: string }) {
                 </p>
                 <h1 className="mt-3 text-3xl font-semibold tracking-tight">Welcome back.</h1>
                 <p className="mt-3 leading-7 text-muted">
-                    Sign in to work with your agent and keep your conversations private.
+                    Sign in to open your projects and their agents’ conversations.
                 </p>
                 <form
                     className="mt-7 grid gap-5"

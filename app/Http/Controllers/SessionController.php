@@ -25,7 +25,9 @@ class SessionController extends Controller
 
         $request->session()->regenerate();
 
-        return redirect()->intended(route('workshop', absolute: false));
+        $request->session()->forget('url.intended');
+
+        return redirect()->route('projects.index');
     }
 
     public function destroy(Request $request): RedirectResponse

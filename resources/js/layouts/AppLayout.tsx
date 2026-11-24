@@ -28,7 +28,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                         {(
                             [
                                 ['Home', props.navigation.home],
-                                ['Workshop', props.navigation.workshop],
+                                ['Projects', props.navigation.projects],
                             ] as const
                         ).map(([label, href]) => (
                             <Link

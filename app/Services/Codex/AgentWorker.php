@@ -63,7 +63,7 @@ class AgentWorker
                 OwnedProcess::cleanRecorded((int) $agent->server_pid, $agent->server_start);
             }
 
-            $workspace = $this->workspaces->resolve($agent->workspace_key, $agent->workspace_path);
+            $workspace = $this->workspaces->agent($agent);
             $uncertain = $agent->active_turn_id !== null || AgentControl::query()->where('agent_id', $agent->id)->whereIn('status', ['pending', 'processing', 'uncertain'])->exists();
             $this->change(function (Agent $agent): void {
                 $agent->fill(['status' => 'recovering', 'connection_id' => (string) Str::uuid(), 'heartbeat_at' => now(), 'reconciled_at' => null, 'notice' => 'Connecting and checking the saved conversation.']);
@@ -84,6 +84,15 @@ class AgentWorker
             }
 
             $params = ['cwd' => $workspace, 'sandbox' => 'workspace-write', 'approvalPolicy' => 'untrusted', 'approvalsReviewer' => 'user', 'developerInstructions' => 'Work in the selected workspace. Never access or disclose credentials, personal files or unrelated repositories. Do not spawn agents. Ask the user before actions requiring approval. If denied, stop that action without trying alternatives.'];
+            $params['developerInstructions'] .= "\nAgent name: ".$agent->name;
+
+            if ($agent->role !== null) {
+                $params['developerInstructions'] .= "\nRole: ".$agent->role;
+            }
+
+            if ($agent->instructions !== null) {
+                $params['developerInstructions'] .= "\nCustom instructions:\n".$agent->instructions;
+            }
             $resuming = $this->agent->thread_id !== null;
 
             if ($resuming) {
@@ -92,8 +101,14 @@ class AgentWorker
             }
 
             $thread = $this->rpc($resuming ? 'thread/resume' : 'thread/start', $params);
-            $this->change(function (Agent $agent) use ($thread): void {
-                $agent->thread_id = $thread['thread']['id'];
+            $threadId = $thread['thread']['id'] ?? null;
+
+            if (! is_string($threadId) || ($resuming && $threadId !== $this->agent->thread_id) || Agent::query()->where('thread_id', $threadId)->where('id', '!=', $this->agent->id)->exists()) {
+                throw new RuntimeException('The Codex thread does not belong to this agent.');
+            }
+
+            $this->change(function (Agent $agent) use ($threadId): void {
+                $agent->thread_id = $threadId;
             }, false);
 
             if ($resuming) {
@@ -121,7 +136,7 @@ class AgentWorker
             }
 
             if ($this->agent->active_turn_id !== null) {
-                $turn = AgentTurn::query()->find($this->agent->active_turn_id);
+                $turn = AgentTurn::query()->where('agent_id', $this->agent->id)->find($this->agent->active_turn_id);
 
                 if ($turn?->codex_id !== null) {
                     $this->rpc('turn/interrupt', ['threadId' => $this->agent->thread_id, 'turnId' => $turn->codex_id]);
@@ -189,7 +204,7 @@ class AgentWorker
                 return null;
             }
 
-            if ($control->kind === 'stop' && AgentTurn::query()->find($control->agent_turn_id)?->codex_id === null && $this->requests !== []) {
+            if ($control->kind === 'stop' && AgentTurn::query()->where('agent_id', $agent->id)->find($control->agent_turn_id)?->codex_id === null && $this->requests !== []) {
                 return null;
             }
 
@@ -203,8 +218,9 @@ class AgentWorker
         }
 
         $this->agent->refresh();
+        $this->workspaces->agent($this->agent);
         $payload = $control->payload;
-        $turn = $control->agent_turn_id === null ? null : AgentTurn::query()->find($control->agent_turn_id);
+        $turn = $control->agent_turn_id === null ? null : AgentTurn::query()->where('agent_id', $this->agent->id)->find($control->agent_turn_id);
 
         if ($control->kind === 'recover') {
             $this->reconcile();
@@ -275,8 +291,8 @@ class AgentWorker
             }
 
             unset($this->requests[$id]);
-            $control = AgentControl::query()->findOrFail($pending['control']);
-            $turn = AgentTurn::query()->findOrFail($pending['turn']);
+            $control = AgentControl::query()->where('agent_id', $this->agent->id)->findOrFail($pending['control']);
+            $turn = AgentTurn::query()->where('agent_id', $this->agent->id)->findOrFail($pending['turn']);
 
             if (isset($response['error'])) {
                 $control->update(['status' => 'rejected']);
@@ -316,7 +332,7 @@ class AgentWorker
 
     private function decide(AgentControl $control, AgentTurn $turn): void
     {
-        $approval = AgentApproval::query()->find($control->payload['approval_id']);
+        $approval = AgentApproval::query()->where('agent_id', $this->agent->id)->find($control->payload['approval_id']);
         $native = $approval?->request_payload;
         $pending = collect($this->client->pendingRequests())->contains(fn (array $request): bool => $request['id'] === ($native['id'] ?? null));
 
@@ -381,7 +397,7 @@ class AgentWorker
             return;
         }
 
-        $turn = $this->agent->active_turn_id === null ? null : AgentTurn::query()->find($this->agent->active_turn_id);
+        $turn = $this->agent->active_turn_id === null ? null : AgentTurn::query()->where('agent_id', $this->agent->id)->find($this->agent->active_turn_id);
 
         if ($method === 'serverRequest/resolved') {
             $this->change(function (Agent $agent) use ($params): void {
@@ -437,7 +453,7 @@ class AgentWorker
         }
 
         $params = $request['params'];
-        $turn = AgentTurn::query()->find($this->agent->active_turn_id);
+        $turn = AgentTurn::query()->where('agent_id', $this->agent->id)->find($this->agent->active_turn_id);
 
         if ($turn === null || ($turn->codex_id !== null && $turn->codex_id !== $params['turnId'])) {
             $this->client->reject($request['id']);
@@ -495,7 +511,7 @@ class AgentWorker
         }
 
         if ($this->agent->active_turn_id !== null) {
-            $turn = AgentTurn::query()->find($this->agent->active_turn_id);
+            $turn = AgentTurn::query()->where('agent_id', $this->agent->id)->find($this->agent->active_turn_id);
 
             if ($turn !== null && $turn->created_at->lessThan(now()->subSeconds(config('agents.turn_timeout')))) {
                 throw new RuntimeException('The task exceeded the worker time limit.');
